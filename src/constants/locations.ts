@@ -1,0 +1,1 @@
+export const LOCATIONS = ["All Locations"];
