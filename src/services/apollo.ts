@@ -21,7 +21,6 @@ export const searchApolloLeads = async (
 ): Promise<Lead[]> => {
   try {
     const response = await apolloApi.post('/api/v1/mixed_people/search', {
-      api_key: config.apolloApiKey,
       q_organization_domains: [],
       page: 1,
       person_titles: [jobTitle],
@@ -49,7 +48,7 @@ export const searchApolloLeads = async (
         }
       });
     }
-    throw new Error('Falha ao buscar leads. Por favor, tente novamente.');
+    throw new Error('Falha ao buscar leads. Por favor, verifique sua conexão e tente novamente.');
   }
 };
 
@@ -173,6 +172,6 @@ export const fetchLeadData = async (linkedinUrl: string) => {
         }
       });
     }
-    throw new Error('Falha ao buscar dados do lead. Por favor, tente novamente.');
+    throw new Error('Falha ao buscar dados do lead. Por favor, verifique sua conexão e tente novamente.');
   }
 };
