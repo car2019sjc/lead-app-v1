@@ -18,6 +18,7 @@ import { INDUSTRIES } from '../constants/industries';
 import { LOCATIONS } from '../constants/locations';
 import SavedLeads from './SavedLeads';
 import { Lead } from '../types';
+import { getJobTitleEquivalents } from '../utils/jobTitleSynonyms';
 
 /**
  * Interface que define a estrutura dos dados de um lead importado do Excel
@@ -125,6 +126,19 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
   };
 
   /**
+   * Função para corrigir problemas de encoding em strings
+   * @param str - String a ser corrigida
+   * @returns String corrigida
+   */
+  function fixEncoding(str: string): string {
+    try {
+      return decodeURIComponent(escape(str));
+    } catch {
+      return str;
+    }
+  }
+
+  /**
    * Processa o arquivo Excel enviado pelo usuário
    * @param file - Arquivo Excel a ser processado
    */
@@ -151,7 +165,11 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
         return;
       }
 
-      setProcessedLeads(jsonData);
+      setProcessedLeads(jsonData.map(lead => ({
+        ...lead,
+        Title: fixEncoding(lead.Title),
+        NormalizedTitle: normalizeString(fixEncoding(lead.Title))
+      })));
       setSuccess(true);
       setShowDocs(false);
     } catch (err) {
@@ -247,8 +265,28 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
         // Verifica se o lead é válido
         if (!lead || !lead.Title) return false;
 
-        // Filtro por título
-        const titleMatch = !jobTitle || normalizeString(lead.Title).includes(normalizeString(jobTitle));
+        // =====================
+        // FILTRO DE JOB TITLE
+        // =====================
+        // A busca por cargo (Job Title) é flexível:
+        // - O termo digitado pelo usuário é normalizado (sem acentos, minúsculo, etc) e dividido em palavras.
+        // - O título do lead também é normalizado.
+        // - O lead será considerado correspondente se TODAS as palavras do termo buscado estiverem presentes no título, mesmo que separadas.
+        // - Se não houver correspondência direta, busca equivalentes definidos em src/utils/jobTitleSynonyms.ts (ex: "CIO" encontra "Diretor de TI").
+        // - Para equivalentes, também é exigido que todas as palavras estejam presentes no título.
+        // - Para alterar ou expandir equivalentes, edite o arquivo jobTitleSynonyms.ts.
+        // - Para mudar a lógica de busca (ex: exigir ordem, permitir plurais, etc), altere este bloco.
+        // Exemplo: buscar "Diretor TI" encontra "Diretor de TI", "Diretor Executivo de TI", etc.
+        const normalizedTitle = (lead.NormalizedTitle || '');
+        const searchWords = normalizeString(jobTitle).split(/\s+/).filter(Boolean);
+        let titleMatch = !jobTitle || searchWords.every(word => normalizedTitle.includes(word));
+        if (!titleMatch && jobTitle) {
+          const equivalents = getJobTitleEquivalents(jobTitle);
+          titleMatch = equivalents.some(eq => {
+            const eqWords = normalizeString(eq).split(/\s+/).filter(Boolean);
+            return eqWords.every(word => normalizedTitle.includes(word));
+          });
+        }
 
         // Filtro por localização
         const locationMatch = !location || location === 'all locations' || 
