@@ -12,7 +12,6 @@ const LeadDataModal: React.FC<LeadDataModalProps> = ({ lead, onClose }) => {
 
   const tabs = [
     { id: 'experience', label: 'Experience', icon: Briefcase },
-    { id: 'other', label: 'Other Info', icon: FileText }
   ];
 
   // Get current company from work history
@@ -91,6 +90,17 @@ const LeadDataModal: React.FC<LeadDataModalProps> = ({ lead, onClose }) => {
                         ) : (
                           <span className="font-bold text-gray-800">{exp.company}</span>
                         )}</span>
+                        {exp.companyUrl && (
+                          <a
+                            href={exp.companyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-2 text-blue-600 hover:text-blue-800"
+                            title="Acessar site da empresa"
+                          >
+                            <Building2 size={14} />
+                          </a>
+                        )}
                       </div>
                       <div className="text-sm text-gray-500 mb-2">{exp.duration}</div>
                       {exp.location && (

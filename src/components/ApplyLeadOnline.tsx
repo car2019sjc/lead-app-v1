@@ -1,9 +1,29 @@
-import React, { useState } from 'react';
-import { X, Search, AlertCircle, CheckCircle2 } from 'lucide-react';
+/**
+ * Componente ApplyLeadOnline
+ * 
+ * Este componente é responsável pela busca e qualificação de leads online via Apollo.io.
+ * Principais funcionalidades:
+ * - Busca de leads online: permite buscar leads diretamente da API do Apollo.io usando parâmetros como cargo (Job Title), localização, indústria, etc.
+ * - Exibição dos resultados: mostra os leads encontrados em uma tabela, com informações detalhadas.
+ * - Seleção e qualificação de leads: o usuário pode selecionar, qualificar e visualizar detalhes dos leads.
+ * - Visualização de detalhes: permite abrir um modal com informações detalhadas do lead selecionado.
+ * 
+ * Dicas para futuras alterações:
+ * - Para alterar os parâmetros de busca, edite a função handleSearch e os campos do formulário.
+ * - Para modificar a exibição dos resultados, altere a renderização da tabela de leads.
+ * - Para integrar com outras APIs, adapte a chamada fetch dentro de handleSearch.
+ * - Para customizar a qualificação ou visualização de leads, edite as funções relacionadas e os modais de detalhes.
+ * 
+ * Localização do arquivo: src/components/ApplyLeadOnline.tsx
+ */
+import React, { useState, useEffect } from 'react';
+import { X, Search, AlertCircle, CheckCircle2, Users } from 'lucide-react';
 import { searchApolloLeads } from '../services/apollo';
+import { getCompanyEmployeeCount } from '../services/openai';
 import { Lead } from '../types';
 import LeadDataModal from './LeadDataModal';
 import { INDUSTRIES } from '../constants/industries';
+import ApolloLeadSearch from './ApolloLeadSearch';
 
 interface ApplyLeadOnlineProps {
   onClose: () => void;
@@ -18,7 +38,10 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
   const [showLeadModal, setShowLeadModal] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isQualifying, setIsQualifying] = useState(false);
+  const [isEnrichingData, setIsEnrichingData] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showApolloSearch, setShowApolloSearch] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(0); // Para forçar re-renderização
 
   const [searchParams, setSearchParams] = useState({
     jobTitle: '',
@@ -30,6 +53,64 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
   const addDebugLog = (message: string) => {
     console.log(`[Debug] ${message}`);
     setDebugLogs(prev => [...prev, `[${new Date().toISOString()}] ${message}`]);
+  };
+
+  const enrichLeadsWithEmployeeData = async (leads: Lead[]): Promise<Lead[]> => {
+    setIsEnrichingData(true);
+    addDebugLog('Iniciando enriquecimento de dados de funcionários...');
+    
+    try {
+      const enrichedLeads = await Promise.all(
+        leads.map(async (lead, index) => {
+          // Se já tem dados de funcionários válidos, pular
+          if (lead.employeeCount && lead.employeeCount !== 'N/A' && lead.employeeCount !== '') {
+            addDebugLog(`Lead ${lead.fullName}: dados de funcionários já disponíveis (${lead.employeeCount})`);
+            return lead;
+          }
+
+          try {
+            addDebugLog(`Buscando dados de funcionários para: ${lead.company}`);
+            
+            // Adicionar um pequeno delay para evitar rate limiting
+            if (index > 0) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            const employeeCount = await getCompanyEmployeeCount(lead.company, lead.industry);
+            addDebugLog(`${lead.company}: ${employeeCount} funcionários`);
+            
+            const updatedLead = {
+              ...lead,
+              employeeCount,
+              // Adicionar timestamp para forçar re-renderização
+              lastUpdated: Date.now()
+            };
+            
+            return updatedLead;
+          } catch (error) {
+            addDebugLog(`Erro ao buscar dados para ${lead.company}: ${error}`);
+            return {
+              ...lead,
+              employeeCount: 'N/A',
+              lastUpdated: Date.now()
+            };
+          }
+        })
+      );
+
+      addDebugLog(`Enriquecimento concluído para ${enrichedLeads.length} leads`);
+      return enrichedLeads;
+    } catch (error) {
+      addDebugLog(`Erro no enriquecimento de dados: ${error}`);
+      // Retorna leads com fallback e timestamp para forçar atualização
+      return leads.map(lead => ({
+        ...lead,
+        employeeCount: lead.employeeCount || 'N/A',
+        lastUpdated: Date.now()
+      }));
+    } finally {
+      setIsEnrichingData(false);
+    }
   };
 
   const handleSearchParamChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -64,6 +145,17 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
 
       addDebugLog(`Found ${results.length} leads`);
       setSearchResults(results);
+      
+      if (results.length > 0) {
+        // Enriquecer dados automaticamente
+        addDebugLog('Iniciando enriquecimento automático de dados...');
+        const enrichedResults = await enrichLeadsWithEmployeeData(results);
+        setSearchResults([...enrichedResults]); // Força nova renderização com spread operator
+        triggerUpdate(); // Força atualização adicional da interface
+        
+        addDebugLog(`Enriquecimento concluído. ${enrichedResults.length} leads atualizados.`);
+      }
+      
       setSuccess(true);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -132,6 +224,22 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
   };
 
   const displayedLeads = qualifiedLeads.length > 0 ? qualifiedLeads : searchResults;
+
+  // Função para forçar atualização da interface
+  const triggerUpdate = () => {
+    setForceUpdate(prev => prev + 1);
+  };
+
+  // Monitorar mudanças nos dados enriquecidos
+  useEffect(() => {
+    if (searchResults.length > 0 && !isEnrichingData) {
+      const hasEnrichedData = searchResults.some(lead => lead.employeeCount && lead.employeeCount !== 'N/A');
+      if (hasEnrichedData) {
+        addDebugLog('Dados enriquecidos detectados, atualizando interface...');
+        triggerUpdate();
+      }
+    }
+  }, [searchResults, isEnrichingData]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -222,11 +330,17 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
             <div className="mt-2 flex gap-2">
               <button
                 onClick={handleSearch}
-                disabled={isSearching}
+                disabled={isSearching || isEnrichingData}
                 className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-colors duration-200 flex items-center justify-center gap-2"
               >
                 <Search size={20} />
-                {isSearching ? 'Searching...' : 'Search Leads'}
+                {isSearching ? 'Searching...' : isEnrichingData ? 'Enriching Data...' : 'Search Leads'}
+              </button>
+              <button
+                onClick={() => setShowApolloSearch(true)}
+                className="py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-colors duration-200 flex items-center justify-center gap-2"
+              >
+                Busca Específica com IA
               </button>
               
               {searchResults.length > 0 && (
@@ -248,7 +362,16 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
             </div>
           )}
 
-          {success && displayedLeads.length > 0 && (
+          {isEnrichingData && (
+            <div className="mb-4 p-4 bg-blue-50 rounded-md flex items-center">
+              <Users className="text-blue-500 mr-2 animate-spin" />
+              <p className="text-blue-700">
+                Enriquecendo dados com informações de funcionários via IA...
+              </p>
+            </div>
+          )}
+
+          {success && displayedLeads.length > 0 && !isEnrichingData && (
             <div className="mb-4 p-4 bg-green-50 rounded-md flex items-center">
               <CheckCircle2 className="text-green-500 mr-2" />
               <p className="text-green-700">
@@ -261,9 +384,24 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
 
           {displayedLeads.length > 0 && (
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">
-                {qualifiedLeads.length > 0 ? 'Qualified' : ''} Search Results ({displayedLeads.length})
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">
+                  {qualifiedLeads.length > 0 ? 'Qualified' : ''} Search Results ({displayedLeads.length})
+                </h2>
+                <button
+                  onClick={() => {
+                    setSearchResults([]);
+                    setQualifiedLeads([]);
+                    setError('');
+                    setSuccess(false);
+                    setDebugLogs([]);
+                    setIsEnrichingData(false);
+                  }}
+                  className="px-3 py-1 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200 transition-colors duration-200"
+                >
+                  Limpar tudo
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -275,6 +413,9 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
                         Company
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        FTEs
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -282,9 +423,9 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-gray-200" key={`leads-table-${forceUpdate}`}>
                     {displayedLeads.map(lead => (
-                      <tr key={lead.id} className="hover:bg-gray-50">
+                      <tr key={`${lead.id}-${lead.lastUpdated || forceUpdate}`} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
                           <div className="flex items-center">
                             <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
@@ -299,6 +440,20 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
                         <td className="px-4 py-3">
                           <div className="text-sm text-gray-900">{lead.company}</div>
                           <div className="text-xs text-gray-500">{lead.industry}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center text-sm text-gray-900">
+                            <Users size={14} className={`mr-1 ${isEnrichingData && (!lead.employeeCount || lead.employeeCount === 'N/A') ? 'text-blue-400 animate-spin' : 'text-gray-400'}`} />
+                            {(() => {
+                              const employeeCount = lead.employeeCount;
+                              console.log(`[FTEs Debug] Lead: ${lead.fullName}, EmployeeCount: ${employeeCount}, IsEnriching: ${isEnrichingData}`);
+                              
+                              if (isEnrichingData && (!employeeCount || employeeCount === 'N/A')) {
+                                return '...';
+                              }
+                              return employeeCount || 'N/A';
+                            })()}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="text-sm text-gray-900">{lead.location}</div>
@@ -345,6 +500,10 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
           lead={selectedLead}
           onClose={() => setShowLeadModal(false)}
         />
+      )}
+
+      {showApolloSearch && (
+        <ApolloLeadSearch onClose={() => setShowApolloSearch(false)} />
       )}
     </div>
   );

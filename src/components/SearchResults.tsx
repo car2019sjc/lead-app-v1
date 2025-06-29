@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lead } from '../types';
 import UserInitials from './UserInitials';
+import { Users } from 'lucide-react';
 
 interface SearchResultsProps {
   searchResults: Lead[];
@@ -8,6 +9,7 @@ interface SearchResultsProps {
   toggleLeadSelection: (leadId: string) => void;
   selectAllLeads: () => void;
   saveSelectedLeads: () => void;
+  isEnrichingData?: boolean;
 }
 
 const SearchResults: React.FC<SearchResultsProps> = ({
@@ -15,10 +17,20 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   selectedLeads,
   toggleLeadSelection,
   selectAllLeads,
-  saveSelectedLeads
+  saveSelectedLeads,
+  isEnrichingData = false
 }) => {
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
+              {isEnrichingData && (
+          <div className="mb-4 p-3 bg-blue-50 rounded-md flex items-center">
+            <Users className="text-blue-500 mr-2 animate-spin" size={16} />
+            <p className="text-blue-700 text-sm">
+              Enriquecendo dados de funcionários com IA...
+            </p>
+          </div>
+        )}
+      
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
         <h2 className="text-xl font-semibold">Search Results ({searchResults.length})</h2>
         <div className="flex space-x-2">
@@ -87,7 +99,20 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <div className="text-xs text-gray-500">{lead.industry || 'Industry not specified'}</div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="text-sm text-gray-900">{lead.employeeCount || 'N/A'}</div>
+                  <div className="flex items-center text-sm text-gray-900">
+                    <Users 
+                      size={14} 
+                      className={`mr-2 ${
+                        isEnrichingData && (!lead.employeeCount || lead.employeeCount === 'N/A') 
+                          ? 'text-blue-400 animate-spin' 
+                          : 'text-gray-400'
+                      }`} 
+                    />
+                    {isEnrichingData && (!lead.employeeCount || lead.employeeCount === 'N/A') 
+                      ? 'Buscando...' 
+                      : (lead.employeeCount || 'N/A')
+                    }
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <div className="text-sm text-gray-900">{lead.location || 'Location not available'}</div>

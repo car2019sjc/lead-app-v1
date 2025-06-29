@@ -12,7 +12,8 @@ const App: React.FC = () => {
   const [loginError, setLoginError] = useState('');
   const [showOnlineApp, setShowOnlineApp] = useState(false);
   const [showOfflineApp, setShowOfflineApp] = useState(false);
-  const [showApolloSearch, setShowApolloSearch] = useState(false);
+  
+  console.log('App state - showOfflineApp:', showOfflineApp);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,41 +90,29 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 pb-10 relative">
-      <div className="fixed top-4 right-4 z-50 flex gap-2">
+      {/* Botão no lado direito */}
+      <div className="fixed top-6 right-6 z-50">
         <button
           onClick={() => setIsAuthenticated(false)}
           className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors duration-200 shadow-lg font-semibold"
         >
           Encerrar
         </button>
-        <button
-          onClick={() => setShowOfflineApp(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200 shadow-lg"
-        >
-          <ExternalLink size={18} />
-          Apply Lead Offline
-        </button>
-        <button
-          onClick={() => setShowApolloSearch(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 shadow-lg"
-        >
-          <Search size={18} />
-          Apollo Lead Search
-        </button>
       </div>
       
-      <LinkedInLeadFinder />
+      <LinkedInLeadFinder 
+        onShowOfflineApp={() => setShowOfflineApp(true)}
+      />
 
       {showOnlineApp && (
         <ApplyLeadOnline onClose={() => setShowOnlineApp(false)} />
       )}
 
       {showOfflineApp && (
-        <ApplyLeadOffline onClose={() => setShowOfflineApp(false)} />
-      )}
-
-      {showApolloSearch && (
-        <ApolloLeadSearch onClose={() => setShowApolloSearch(false)} />
+        <ApplyLeadOffline onClose={() => {
+          console.log('Fechando ApplyLeadOffline');
+          setShowOfflineApp(false);
+        }} />
       )}
     </div>
   );

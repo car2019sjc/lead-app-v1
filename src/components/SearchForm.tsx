@@ -7,13 +7,15 @@ interface SearchFormProps {
   handleSearchParamChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
   handleSearch: () => void;
   isSearching: boolean;
+  isEnrichingData?: boolean;
 }
 
 const SearchForm: React.FC<SearchFormProps> = ({
   searchParams,
   handleSearchParamChange,
   handleSearch,
-  isSearching
+  isSearching,
+  isEnrichingData = false
 }) => {
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -88,10 +90,10 @@ const SearchForm: React.FC<SearchFormProps> = ({
       <div className="mt-2">
         <button
           onClick={handleSearch}
-          disabled={isSearching}
+          disabled={isSearching || isEnrichingData}
           className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-colors duration-200"
         >
-          {isSearching ? 'Searching...' : 'Search Leads'}
+          {isSearching ? 'Searching...' : isEnrichingData ? 'Enriching Data...' : 'Search Leads'}
         </button>
       </div>
     </div>

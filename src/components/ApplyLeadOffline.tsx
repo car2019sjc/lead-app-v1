@@ -10,8 +10,8 @@
  * - Exportação de leads selecionados
  */
 
-import React, { useState } from 'react';
-import { X, Upload, CheckCircle2, HelpCircle, Download } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Upload, CheckCircle2, HelpCircle, Download, AlertCircle, AlertTriangle } from 'lucide-react';
 import { read, utils, writeFile, WorkBook, WorkSheet } from 'xlsx';
 import { normalizeString } from '../utils/stringUtils';
 import { INDUSTRIES } from '../constants/industries';
@@ -63,16 +63,61 @@ interface ApplyLeadOfflineProps {
  * Componente principal para processamento offline de leads
  */
 const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
+  console.log('ApplyLeadOffline component renderizado');
+  
   // Estados do componente
   const [error, setError] = useState<string>('');
-  const [success, setSuccess] = useState(false);
-  const [showDocs, setShowDocs] = useState(true);
+  const [success, setSuccess] = useState<boolean>(false);
+  const [showDocs, setShowDocs] = useState<boolean>(false);
   const [processedLeads, setProcessedLeads] = useState<ExcelLead[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [customLocation, setCustomLocation] = useState('');
   const [showSavedLeads, setShowSavedLeads] = useState(false);
   const [savedLeads, setSavedLeads] = useState<Lead[]>([]);
+  const [notification, setNotification] = useState<{show: boolean, message: string, type: 'success' | 'error' | 'warning'}>({
+    show: false,
+    message: '',
+    type: 'success'
+  });
+
+  // Função para mostrar notificações
+  const showNotification = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    setNotification({ show: true, message, type });
+    setTimeout(() => {
+      setNotification({ show: false, message: '', type: 'success' });
+    }, 4000);
+  };
+
+  // Reset dos estados quando o componente é montado
+  useEffect(() => {
+    setShowSavedLeads(false);
+    setError('');
+    setSuccess(false);
+    setProcessedLeads([]);
+    setSearchResults([]);
+    setSelectedLeads([]);
+    // Reset do input de arquivo
+    const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  }, []);
+
+  // Carregar leads salvos do localStorage ao inicializar
+  useEffect(() => {
+    const savedData = localStorage.getItem('savedLeads');
+    if (savedData) {
+      try {
+        setSavedLeads(JSON.parse(savedData));
+      } catch (error) {
+        console.error('Error loading saved leads:', error);
+      }
+    }
+  }, []);
+
+  // Salvar leads no localStorage quando mudarem
+  useEffect(() => {
+    localStorage.setItem('savedLeads', JSON.stringify(savedLeads));
+  }, [savedLeads]);
 
   // Estado para parâmetros de busca
   const [searchParams, setSearchParams] = useState({
@@ -149,32 +194,115 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
       setProcessedLeads([]);
       setSearchResults([]);
       
-      if (!file.name.match(/\.(xlsx|xls)$/)) {
-        setError('Please upload an Excel file (.xlsx or .xls)');
+      if (!file.name.match(/\.(xlsx|xls|csv)$/)) {
+        setError('Por favor, envie um arquivo Excel (.xlsx, .xls) ou CSV (.csv)');
         return;
       }
 
+      console.log('Processando arquivo:', file.name);
+      
+      let jsonData: any[];
+      
+      // Processa arquivo CSV ou Excel de forma diferente
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        console.log('Processando arquivo CSV');
+        const text = await file.text();
+        const workbook = read(text, { type: 'string' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        jsonData = utils.sheet_to_json(worksheet);
+      } else {
+        console.log('Processando arquivo Excel');
       const data = await file.arrayBuffer();
       const workbook = read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = utils.sheet_to_json<ExcelLead>(worksheet);
+        jsonData = utils.sheet_to_json(worksheet);
+      }
 
-      const headers = Object.keys(jsonData[0] || {});
-      if (!validateHeaders(headers)) {
-        setError('Invalid Excel format. Please ensure all required columns are present.');
+      if (!jsonData || jsonData.length === 0) {
+        setError('Arquivo está vazio ou não contém dados válidos.');
         return;
       }
 
-      setProcessedLeads(jsonData.map(lead => ({
+      console.log('Dados processados:', jsonData.length, 'leads encontrados');
+      console.log('Cabeçalhos encontrados:', Object.keys(jsonData[0] || {}));
+      console.log('Exemplo de lead:', jsonData[0]);
+      
+      // Debug: verificar leads com dados suspeitos
+      jsonData.forEach((lead, index) => {
+        const firstName = lead['First Name'] || lead['Nome'] || lead['Primeiro Nome'] || '';
+        const lastName = lead['Last Name'] || lead['Sobrenome'] || lead['Último Nome'] || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        
+        // Verificar se há caracteres suspeitos no nome
+        if (fullName.includes('MILÍMETROS') || fullName.includes('MILIMETROS') || /[^\w\s\u00C0-\u017F\-\.]/g.test(fullName)) {
+          console.log(`[DEBUG] Lead suspeito encontrado no índice ${index}:`, {
+            firstName,
+            lastName,
+            fullName,
+            rawLead: lead
+          });
+        }
+      });
+
+      // Função para limpar dados corrompidos
+      const sanitizeData = (value: any): string => {
+        if (!value) return '';
+        let str = String(value).trim();
+        
+        // Remove palavras suspeitas conhecidas
+        const suspiciousWords = ['MILÍMETROS', 'MILIMETROS', 'MILÍMETRE', 'MILIMETRE'];
+        suspiciousWords.forEach(word => {
+          str = str.replace(new RegExp(word, 'gi'), '');
+        });
+        
+        // Remove caracteres especiais que podem causar problemas de renderização
+        str = str.replace(/[^\w\s\u00C0-\u017F@\.\-]/g, '').trim();
+        
+        // Remove espaços múltiplos
+        str = str.replace(/\s+/g, ' ').trim();
+        
+        return str;
+      };
+
+      // Processa os dados com a estrutura existente
+      const processedData = jsonData.map((lead: any) => {
+        // Filtra leads que não tenham dados mínimos válidos
+        const firstName = sanitizeData(lead['First Name'] || lead['Nome'] || lead['Primeiro Nome']);
+        const lastName = sanitizeData(lead['Last Name'] || lead['Sobrenome'] || lead['Último Nome']);
+        const title = sanitizeData(lead['Title'] || lead['Cargo'] || lead['Posição'] || lead['Job Title']);
+        const company = sanitizeData(lead['Company'] || lead['Empresa'] || lead['Organization']);
+        
+        // Se não tiver nome OU título OU empresa, pular este lead
+        if (!firstName && !lastName && !title && !company) {
+          return null;
+        }
+        
+        return {
         ...lead,
-        Title: fixEncoding(lead.Title),
-        NormalizedTitle: normalizeString(fixEncoding(lead.Title))
-      })));
+          'First Name': firstName,
+          'Last Name': lastName,
+          'Title': title,
+          'Company': company,
+          'Email': sanitizeData(lead['Email'] || lead['E-mail']),
+          'Industry': sanitizeData(lead['Industry'] || lead['Indústria'] || lead['Setor']),
+          'City': sanitizeData(lead['City'] || lead['Cidade']),
+          'State': sanitizeData(lead['State'] || lead['Estado']),
+          '# Employees': sanitizeData(lead['# Employees'] || lead['Funcionários'] || lead['Employees']),
+          'Person Linkedin Url': lead['Person Linkedin Url'] || lead['LinkedIn'] || lead['Profile URL'] || '',
+          'Company Name for Emails': sanitizeData(lead['Company Name for Emails'] || lead['Company'] || lead['Empresa']),
+          NormalizedTitle: normalizeString(title)
+        };
+      }).filter(lead => lead !== null); // Remove leads nulos
+
+      console.log('Dados processados com sucesso:', processedData.length, 'leads');
+      console.log('Exemplo de lead processado:', processedData[0]);
+
+      setProcessedLeads(processedData);
       setSuccess(true);
       setShowDocs(false);
     } catch (err) {
-      setError('Error processing the Excel file. Please try again.');
-      console.error('Error processing Excel:', err);
+      console.error('Erro ao processar arquivo:', err);
+      setError('Erro ao processar o arquivo. Verifique se o arquivo não está corrompido e tente novamente.');
     }
   };
 
@@ -345,18 +473,96 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
       // Limita o número de resultados
       const limitedResults = filtered.slice(0, searchParams.limit);
 
+      // Função para limpar e validar strings
+      const cleanString = (str: any): string => {
+        if (!str) return '';
+        let cleaned = String(str).trim();
+        
+        // Remove palavras suspeitas conhecidas
+        const suspiciousWords = ['MILÍMETROS', 'MILIMETROS', 'MILÍMETRE', 'MILIMETRE'];
+        suspiciousWords.forEach(word => {
+          cleaned = cleaned.replace(new RegExp(word, 'gi'), '');
+        });
+        
+        // Remove caracteres estranhos e mantém apenas letras, números, espaços e acentos
+        cleaned = cleaned.replace(/[^\w\s\u00C0-\u017F\-\.]/g, '').trim();
+        
+        // Remove espaços múltiplos
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        
+        return cleaned;
+      };
+
       // Converte os leads filtrados para o formato de exibição
-      const results = limitedResults.map(lead => ({
+      const results = limitedResults.map((lead, index) => {
+        let firstName = cleanString(lead['First Name']);
+        let lastName = cleanString(lead['Last Name']);
+        
+        // Validação extra: se ainda contém palavras suspeitas, substituir por valores seguros
+        if (firstName.includes('MILÍMETROS') || firstName.includes('MILIMETROS')) {
+          console.log(`[ERRO] First Name ainda contém MILÍMETROS:`, firstName);
+          firstName = 'Nome';
+        }
+        if (lastName.includes('MILÍMETROS') || lastName.includes('MILIMETROS')) {
+          console.log(`[ERRO] Last Name ainda contém MILÍMETROS:`, lastName);
+          lastName = 'Sobrenome';
+        }
+        
+        let fullName = `${firstName} ${lastName}`.trim();
+        
+        // Validação final: se o nome completo ainda contém palavras suspeitas
+        if (fullName.includes('MILÍMETROS') || fullName.includes('MILIMETROS')) {
+          console.log(`[ERRO] Nome completo ainda contém MILÍMETROS:`, fullName);
+          fullName = 'Nome Não Disponível';
+        }
+        
+        // Debug: verificar se ainda há problemas no nome final
+        if (fullName.includes('MILÍMETROS') || fullName.includes('MILIMETROS')) {
+          console.log(`[DEBUG] Nome suspeito ainda presente no resultado ${index}:`, {
+            originalFirstName: lead['First Name'],
+            originalLastName: lead['Last Name'],
+            cleanedFirstName: firstName,
+            cleanedLastName: lastName,
+            finalName: fullName,
+            fullLead: lead
+          });
+        }
+        
+        // Debug: verificar as iniciais que serão geradas
+        const words = fullName.split(' ').filter(word => {
+          const cleanWord = word.trim();
+          return cleanWord.length > 0 && 
+                 !cleanWord.includes('MILÍMETROS') && 
+                 !cleanWord.includes('MILIMETROS') &&
+                 /^[a-zA-ZÀ-ÿ]/.test(cleanWord);
+        });
+        const initials = words.length > 0 ? words.map(n => n[0]).join('').toUpperCase() : 'NN';
+        
+        if (fullName.includes('Mauro')) {
+          console.log(`[DEBUG] Processando Mauro Mazur:`, {
+            originalFirstName: lead['First Name'],
+            originalLastName: lead['Last Name'],
+            cleanedFirstName: firstName,
+            cleanedLastName: lastName,
+            finalName: fullName,
+            words: words,
+            initials: initials,
+            fullLead: lead
+          });
+        }
+        
+        return {
         id: Math.random().toString(36).substr(2, 9),
-        name: `${lead['First Name']} ${lead['Last Name']}`,
-        jobTitle: lead.Title,
-        company: lead.Company,
-        industry: lead.Industry,
-        ftes: lead['# Employees'],
-        location: `${lead.City}, ${lead.State}`,
-        profileUrl: lead['Person Linkedin Url'],
-        email: lead.Email
-      }));
+          name: fullName || 'Nome não disponível',
+          jobTitle: cleanString(lead.Title) || 'Cargo não informado',
+          company: cleanString(lead.Company) || 'Empresa não informada',
+          industry: cleanString(lead.Industry) || 'Indústria não informada',
+          ftes: cleanString(lead['# Employees']) || 'N/A',
+          location: `${cleanString(lead.City)}, ${cleanString(lead.State)}`.replace(/^,\s*|,\s*$/g, '') || 'Localização não informada',
+          profileUrl: lead['Person Linkedin Url'] || '',
+          email: cleanString(lead.Email) || ''
+        };
+      });
 
       // Atualiza os resultados e mensagens
       setSearchResults(results);
@@ -396,11 +602,11 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
   };
 
   /**
-   * Salva os leads selecionados para processamento posterior
+   * Salva os leads selecionados
    */
   const saveSelectedLeads = () => {
     if (selectedLeads.length === 0) {
-      alert('Selecione pelo menos um lead para salvar!');
+      showNotification('Selecione pelo menos um lead para salvar!', 'error');
       return;
     }
     const leadsParaSalvar = searchResults.filter(lead => selectedLeads.includes(lead.id));
@@ -419,7 +625,20 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
       emailScore: null,
       employeeCount: lead.ftes || '',
     }));
-    setSavedLeads(leadsAdaptados);
+    
+    setSavedLeads(prev => {
+      // Adiciona apenas leads que ainda não estão salvos (por id)
+      const prevIds = new Set(prev.map(lead => lead.id));
+      const novosLeads = leadsAdaptados.filter(lead => !prevIds.has(lead.id));
+      if (novosLeads.length === 0) {
+        showNotification('Todos os leads selecionados já estão salvos.', 'warning');
+        return prev;
+      }
+      showNotification(`${novosLeads.length} lead(s) salvo(s) com sucesso!`);
+      return [...prev, ...novosLeads];
+    });
+    
+    setSelectedLeads([]);
     setShowSavedLeads(true);
   };
 
@@ -432,11 +651,25 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
   };
 
   /**
+   * Limpa todos os leads salvos
+   */
+  const clearAllSavedLeads = () => {
+    if (savedLeads.length === 0) {
+      showNotification('Nenhum lead salvo para limpar!', 'warning');
+      return;
+    }
+    if (confirm(`Tem certeza que deseja remover todos os ${savedLeads.length} leads salvos?`)) {
+      setSavedLeads([]);
+      showNotification('Todos os leads foram removidos!');
+    }
+  };
+
+  /**
    * Exporta os leads salvos para um arquivo CSV
    */
   const exportLeads = () => {
     if (savedLeads.length === 0) {
-      alert('Nenhum lead salvo para exportar!');
+      showNotification('Nenhum lead salvo para exportar!', 'warning');
       return;
     }
     const headers = ['Name', 'Job Title', 'Company', 'Location', 'Email', 'LinkedIn URL'];
@@ -469,25 +702,38 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 z-10 bg-white px-6 py-4 flex justify-between items-center border-b border-gray-200">
           <div>
-            <h2 className="text-xl font-semibold text-gray-800">Apply Lead Offline</h2>
-            <p className="text-sm text-gray-600">Upload from Apollo.io exported Excel file</p>
+            <h2 className="text-xl font-semibold text-gray-800">Leads Offline - Apollo</h2>
+            <p className="text-sm text-gray-600">Upload de arquivo Excel ou CSV exportado do Apollo.io</p>
           </div>
           <div className="flex items-center gap-4">
             <button
               onClick={() => {
-                const fileInput = document.getElementById('file-upload');
-                if (fileInput) fileInput.click();
+                // Reset completo dos estados antes de abrir o file picker
+                setShowSavedLeads(false);
+                setError('');
+                setSuccess(false);
+                setProcessedLeads([]);
+                setSearchResults([]);
+                setSelectedLeads([]);
+                setShowDocs(false);
+                
+                // Reset do input de arquivo
+                const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+                if (fileInput) {
+                  fileInput.value = '';
+                  fileInput.click();
+                }
               }}
               className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
             >
               <Upload size={16} className="mr-1" />
-              Upload Excel File
+              Upload Excel/CSV
             </button>
             <input
               type="file"
               id="file-upload"
               className="hidden"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.csv"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleFileUpload(file);
@@ -503,54 +749,142 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
         </div>
         {showSavedLeads ? (
           <div className="p-6">
-            <SavedLeads savedLeads={savedLeads} deleteSavedLead={deleteSavedLead} exportLeads={exportLeads} />
+            <SavedLeads 
+              savedLeads={savedLeads} 
+              deleteSavedLead={deleteSavedLead} 
+              exportLeads={exportLeads}
+              clearAllSavedLeads={clearAllSavedLeads}
+            />
+            <div className="flex space-x-3 mt-4">
             <button
-              onClick={() => setShowSavedLeads(false)}
-              className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-            >
-              Voltar para busca
+                onClick={() => {
+                  // Apenas volta para a tela de resultados SEM resetar os dados
+                  setShowSavedLeads(false);
+                  // Mantém os dados carregados: processedLeads, searchResults, etc.
+                  // Apenas limpa notificações e dropdowns
+                  setNotification({ show: false, message: '', type: 'success' });
+                  setShowIndustryDropdown(false);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors duration-200"
+              >
+                ← Voltar aos Resultados
+              </button>
+              
+              <button
+                onClick={() => {
+                  // Reset completo para novo upload
+                  setShowSavedLeads(false);
+                  setError('');
+                  setSuccess(false);
+                  setSearchResults([]);
+                  setSelectedLeads([]);
+                  setProcessedLeads([]);
+                  setShowDocs(false);
+                  setCustomLocation('');
+                  setIndustrySearch('');
+                  setShowIndustryDropdown(false);
+                  setNotification({ show: false, message: '', type: 'success' });
+                  
+                  // Reset dos parâmetros de busca
+                  setSearchParams({
+                    jobTitle: '',
+                    location: LOCATIONS[0],
+                    industry: INDUSTRIES[0],
+                    limit: 5,
+                    ftes: 'all'
+                  });
+                  
+                  // Reset do input de arquivo
+                  const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+                  if (fileInput) fileInput.value = '';
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors duration-200"
+              >
+                📁 Novo Upload
             </button>
+            </div>
           </div>
         ) : (
           <div className="p-6">
             {success && (
+              <>
               <div className="mb-6 p-4 bg-green-50 rounded-md flex items-center">
                 <CheckCircle2 className="text-green-500 mr-2" size={20} />
                 <p className="text-green-700">
-                  {processedLeads.length} leads successfully loaded from the Excel file!
+                    {processedLeads.length} leads carregados e normalizados com sucesso!
                 </p>
               </div>
+                
+
+              </>
             )}
 
             {showDocs && (
               <div className="mb-6 bg-blue-50 rounded-lg p-6">
                 <div className="flex items-start mb-4">
                   <HelpCircle className="text-blue-600 mr-2 flex-shrink-0 mt-1" />
-                  <h3 className="text-lg font-semibold text-blue-900">Excel File Requirements</h3>
+                  <h3 className="text-lg font-semibold text-blue-900">Requisitos do Arquivo Excel</h3>
                 </div>
                 <div className="space-y-4 text-sm text-blue-800">
-                  <p>
-                    To ensure successful data import, your Excel file must:
-                  </p>
+                  <div className="bg-green-100 p-4 rounded-md">
+                    <p className="font-medium text-green-800 mb-2">✨ Normalização Automática Ativada!</p>
+                    <p className="text-green-700">
+                      O sistema agora mapeia automaticamente as colunas do Apollo, mesmo que tenham nomes diferentes. 
+                      Não se preocupe com formatação - os dados serão limpos automaticamente!
+                    </p>
+                  </div>
+                  
                   <div className="pl-4">
-                    <h4 className="font-semibold mb-2">Required Columns:</h4>
+                    <h4 className="font-semibold mb-2">Colunas Mapeadas Automaticamente:</h4>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="font-medium">Nomes:</p>
                     <ul className="list-disc pl-4 space-y-1">
-                      <li>First Name</li>
-                      <li>Last Name</li>
-                      <li>Title</li>
-                      <li>Company</li>
-                      <li>Company Name for Emails</li>
-                      <li>Email</li>
-                      <li># Employees</li>
-                      <li>Industry</li>
-                      <li>Person Linkedin Url</li>
-                      <li>City</li>
-                      <li>State</li>
+                          <li>First Name, Nome, Primeiro Nome</li>
+                          <li>Last Name, Sobrenome, Último Nome</li>
                     </ul>
                   </div>
+                      <div>
+                        <p className="font-medium">Profissional:</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>Title, Job Title, Cargo, Função</li>
+                          <li>Company, Organization, Empresa</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="font-medium">Contato:</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>Email, E-mail, Personal Email</li>
+                          <li>LinkedIn URL, Profile URL</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="font-medium">Empresa:</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>Industry, Sector, Setor</li>
+                          <li># Employees, Funcionários</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div className="bg-blue-100 p-4 rounded-md">
-                    <p className="font-medium">Important Note:</p>
-                    <p>This tool is designed to work specifically with Excel files exported from Apollo.io. Using files from other sources or with different structures may result in errors.</p>
+                    <p className="font-medium">Limpeza Automática de Dados:</p>
+                    <ul className="mt-2 space-y-1 text-xs">
+                      <li>• Correção de acentos e caracteres especiais</li>
+                      <li>• Capitalização adequada de nomes e localizações</li>
+                      <li>• Validação e correção de emails</li>
+                      <li>• Padronização de URLs do LinkedIn</li>
+                      <li>• Normalização do número de funcionários</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-yellow-100 p-4 rounded-md">
+                    <p className="font-medium text-yellow-800">Requisito Mínimo:</p>
+                    <p className="text-yellow-700">
+                      O arquivo deve conter pelo menos: <strong>Nome, Sobrenome, Cargo e Empresa</strong>. 
+                      Outras colunas são opcionais e serão preenchidas automaticamente quando possível.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -688,10 +1022,25 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
                   <h2 className="text-xl font-semibold">Search Results ({searchResults.length})</h2>
                   <div className="flex space-x-2">
                     <button
+                      onClick={onClose}
+                      className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded hover:bg-blue-200 font-medium"
+                    >
+                      Voltar
+                    </button>
+                    <button
                       onClick={selectAllLeads}
                       className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
                     >
                       {selectedLeads.length === searchResults.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSearchResults([]);
+                        setSelectedLeads([]);
+                      }}
+                      className="px-3 py-1 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200"
+                    >
+                      Limpar tudo
                     </button>
                     <button
                       onClick={() => {
@@ -750,10 +1099,22 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
                           <td className="px-4 py-3">
                             <div className="flex items-center">
                               <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
-                                {result.name.split(' ').map(n => n[0]).join('')}
+                                {(() => {
+                                  // Gera iniciais apenas de palavras válidas (sem palavras suspeitas)
+                                  const words = result.name.split(' ').filter(word => {
+                                    const cleanWord = word.trim();
+                                    return cleanWord.length > 0 && 
+                                           !cleanWord.includes('MILÍMETROS') && 
+                                           !cleanWord.includes('MILIMETROS') &&
+                                           /^[a-zA-ZÀ-ÿ]/.test(cleanWord); // Só palavras que começam com letra
+                                  });
+                                  return words.length > 0 ? words.map(n => n[0]).join('').toUpperCase() : 'NN';
+                                })()}
                               </div>
                               <div className="ml-3">
-                                <div className="text-sm font-medium text-gray-900">{result.name}</div>
+                                <div className="text-sm font-medium text-gray-900" style={{position: 'relative', zIndex: 10, backgroundColor: 'white'}}>
+                                  {result.name}
+                                </div>
                                 <div className="text-sm text-gray-500">{result.jobTitle}</div>
                               </div>
                             </div>
@@ -787,6 +1148,47 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
                 </div>
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Notificação */}
+        {notification.show && (
+          <div className={`fixed top-4 right-4 z-50 max-w-md p-4 rounded-lg shadow-lg transition-all duration-300 ${
+            notification.type === 'success' ? 'bg-green-50 border border-green-200' :
+            notification.type === 'error' ? 'bg-red-50 border border-red-200' :
+            'bg-yellow-50 border border-yellow-200'
+          }`}>
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                {notification.type === 'success' && <CheckCircle2 className="h-5 w-5 text-green-400" />}
+                {notification.type === 'error' && <AlertCircle className="h-5 w-5 text-red-400" />}
+                {notification.type === 'warning' && <AlertTriangle className="h-5 w-5 text-yellow-400" />}
+              </div>
+              <div className="ml-3">
+                <p className={`text-sm font-medium ${
+                  notification.type === 'success' ? 'text-green-800' :
+                  notification.type === 'error' ? 'text-red-800' :
+                  'text-yellow-800'
+                }`}>
+                  {notification.message}
+                </p>
+              </div>
+              <div className="ml-auto pl-3">
+                <div className="-mx-1.5 -my-1.5">
+                  <button
+                    onClick={() => setNotification({ show: false, message: '', type: 'success' })}
+                    className={`inline-flex rounded-md p-1.5 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                      notification.type === 'success' ? 'text-green-500 hover:bg-green-100 focus:ring-green-600' :
+                      notification.type === 'error' ? 'text-red-500 hover:bg-red-100 focus:ring-red-600' :
+                      'text-yellow-500 hover:bg-yellow-100 focus:ring-yellow-600'
+                    }`}
+                  >
+                    <span className="sr-only">Dismiss</span>
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@ import axios from 'axios';
 import config from '../config';
 import { Lead } from '../types';
 import { getCompanyIndustry } from './openai';
+import { getBestEnglishJobTitle, getJobTitleEquivalents } from '../utils/jobTitleSynonyms';
 
 const apolloApi = axios.create({
   baseURL: '/apollo',
@@ -17,17 +18,48 @@ export const searchApolloLeads = async (
   jobTitle: string, 
   location?: string, 
   industry?: string, 
-  count: number = 10
+  count: number = 10,
+  company?: string
 ): Promise<Lead[]> => {
   try {
-    const response = await apolloApi.post('/api/v1/mixed_people/search', {
+    // Traduz o cargo para inglês se necessário para melhor resultado na API
+    const englishJobTitle = getBestEnglishJobTitle(jobTitle);
+    
+    console.log(`Pesquisando cargo: "${jobTitle}" -> traduzido para: "${englishJobTitle}"`);
+    
+    let response = await apolloApi.post('/api/v1/mixed_people/search', {
       q_organization_domains: [],
+      q_organization_names: company ? [company] : [],
       page: 1,
-      person_titles: [jobTitle],
+      person_titles: [englishJobTitle],
       person_locations: location ? [location] : [],
       organization_industries: industry ? [industry] : [],
       per_page: count
     });
+    
+    // Se não encontrou resultados com o termo traduzido, tenta com equivalentes
+    if (!response.data?.people || response.data.people.length === 0) {
+      const equivalents = getJobTitleEquivalents(jobTitle);
+      
+      for (const equivalent of equivalents.slice(0, 3)) { // Tenta até 3 equivalentes
+        console.log(`Tentando termo equivalente: "${equivalent}"`);
+        
+        response = await apolloApi.post('/api/v1/mixed_people/search', {
+          q_organization_domains: [],
+          q_organization_names: company ? [company] : [],
+          page: 1,
+          person_titles: [equivalent],
+          person_locations: location ? [location] : [],
+          organization_industries: industry ? [industry] : [],
+          per_page: count
+        });
+        
+        if (response.data?.people && response.data.people.length > 0) {
+          console.log(`Encontrados ${response.data.people.length} resultados com "${equivalent}"`);
+          break;
+        }
+      }
+    }
     
     if (response.data && response.data.people) {
       return await transformApolloData(response.data.people);
@@ -173,5 +205,173 @@ export const fetchLeadData = async (linkedinUrl: string) => {
       });
     }
     throw new Error('Falha ao buscar dados do lead. Por favor, verifique sua conexão e tente novamente.');
+  }
+};
+
+export const searchApolloLead = async (params: {
+  firstName?: string;
+  lastName?: string;
+  organizationName?: string;
+  organizationDomain?: string;
+}): Promise<{ person: any; organization: any }> => {
+  try {
+    const searchData: any = {
+      page: 1,
+      per_page: 1, // Buscar apenas 1 resultado
+      reveal_personal_emails: true, // Tentar revelar emails pessoais
+      reveal_phone_number: false,
+      email_status: ['verified', 'guessed', 'unavailable'], // Incluir todos os tipos de email
+      use_email_credits: true // Forçar uso de créditos de email
+    };
+
+    // Adicionar filtros baseados nos parâmetros
+    if (params.firstName || params.lastName) {
+      const fullName = `${params.firstName || ''} ${params.lastName || ''}`.trim();
+      if (fullName) {
+        searchData.q_keywords = fullName;
+      }
+    }
+
+    if (params.organizationName) {
+      searchData.q_organization_names = [params.organizationName];
+    }
+
+    if (params.organizationDomain) {
+      searchData.q_organization_domains = [params.organizationDomain];
+    }
+
+    console.log('Dados de busca Apollo:', searchData);
+    const response = await apolloApi.post('/api/v1/mixed_people/search', searchData);
+    
+    if (response.data && response.data.people && response.data.people.length > 0) {
+      const person = response.data.people[0];
+      console.log('Dados brutos da pessoa encontrada:', person);
+      
+      // Tentar extrair email de diferentes campos
+      const rawEmail = person.email || 
+                      person.personal_emails?.[0] || 
+                      person.work_email || 
+                      person.extrapolated_email || 
+                      '';
+
+      // Identificar se é um placeholder do Apollo
+      const isPlaceholderEmail = rawEmail === 'email_not_unlocked@domain.com' || 
+                                rawEmail === 'email_not_unlocked@apollo.io';
+      
+      // Se for placeholder, indicar que há email disponível mas bloqueado
+      // Se for email real, usar o email
+      // Se estiver vazio, deixar vazio
+      let email = rawEmail;
+      let emailStatus = 'available';
+      
+      if (isPlaceholderEmail) {
+        emailStatus = 'locked';
+      } else if (!rawEmail) {
+        emailStatus = 'unavailable';
+      }
+
+      // Se encontramos um placeholder mas temos créditos, tentar revelar o email
+      if (isPlaceholderEmail && person.id) {
+        console.log('Tentando revelar email bloqueado usando créditos...');
+        try {
+          // Primeira tentativa: usando people/match
+          const revealResponse = await apolloApi.post('/api/v1/people/match', {
+            id: person.id,
+            reveal_personal_emails: true
+          });
+          
+          if (revealResponse.data && revealResponse.data.person && revealResponse.data.person.email) {
+            const revealedEmail = revealResponse.data.person.email;
+            if (revealedEmail && !revealedEmail.includes('email_not_unlocked')) {
+              email = revealedEmail;
+              emailStatus = 'available';
+              console.log('Email revelado com sucesso (method 1):', revealedEmail);
+            }
+          }
+        } catch (revealError) {
+          console.log('Método 1 falhou, tentando método 2...');
+          
+          // Segunda tentativa: usando people/enrich
+          try {
+            const enrichResponse = await apolloApi.post('/api/v1/people/enrich', {
+              id: person.id,
+              reveal_personal_emails: true
+            });
+            
+            if (enrichResponse.data && enrichResponse.data.person && enrichResponse.data.person.email) {
+              const enrichedEmail = enrichResponse.data.person.email;
+              if (enrichedEmail && !enrichedEmail.includes('email_not_unlocked')) {
+                email = enrichedEmail;
+                emailStatus = 'available';
+                console.log('Email revelado com sucesso (method 2):', enrichedEmail);
+              }
+            }
+          } catch (enrichError) {
+            console.log('Método 2 também falhou:', enrichError);
+          }
+        }
+      }
+
+      // Tentar extrair setor de diferentes campos
+      const organization = person.organization || {};
+      const currentEmployment = person.employment_history?.find((job: any) => job.current) || {};
+      
+      console.log('Dados da organização completos:', JSON.stringify(organization, null, 2));
+      console.log('Histórico de emprego atual:', JSON.stringify(currentEmployment, null, 2));
+      
+      let industry = organization.industry || 
+                    organization.raw_industry || 
+                    organization.sector ||
+                    currentEmployment.industry || 
+                    person.industry ||
+                    '';
+
+      console.log('Email encontrado:', email);
+      console.log('Email bruto:', rawEmail);
+      console.log('Status do email:', emailStatus);
+      console.log('É placeholder?', isPlaceholderEmail);
+      console.log('Organização encontrada:', organization);
+      console.log('Setor encontrado:', industry);
+      
+      return {
+        person: {
+          first_name: person.first_name || '',
+          last_name: person.last_name || '',
+          title: person.title || currentEmployment.title || '',
+          email: email,
+          emailStatus: emailStatus,
+          linkedin_url: person.linkedin_url || '',
+          organization_id: person.organization_id || '',
+          city: person.city || '',
+          state: person.state || ''
+        },
+        organization: person.organization ? {
+          id: person.organization.id || '',
+          name: person.organization.name || '',
+          primary_domain: person.organization.primary_domain || person.organization.website || '',
+          employees: person.organization.employees || person.organization.estimated_num_employees || 0,
+          industry: industry,
+          city: person.organization.city || '',
+          state: person.organization.state || ''
+        } : null
+      };
+    }
+    
+    throw new Error('Nenhum resultado encontrado');
+  } catch (error) {
+    console.error('Error searching for lead in Apollo:', error);
+    if (axios.isAxiosError(error)) {
+      console.error('Detailed error information:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          headers: error.config?.headers
+        }
+      });
+    }
+    throw new Error('Falha ao buscar lead. Por favor, verifique sua conexão e tente novamente.');
   }
 };

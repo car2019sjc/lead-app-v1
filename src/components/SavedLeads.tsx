@@ -9,12 +9,14 @@ interface SavedLeadsProps {
   savedLeads: Lead[];
   deleteSavedLead: (leadId: string) => void;
   exportLeads: () => void;
+  clearAllSavedLeads?: () => void;
 }
 
 const SavedLeads: React.FC<SavedLeadsProps> = ({
   savedLeads,
   deleteSavedLead,
-  exportLeads
+  exportLeads,
+  clearAllSavedLeads
 }) => {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showDataModal, setShowDataModal] = useState(false);
@@ -46,6 +48,14 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">Saved Leads ({savedLeads.length})</h2>
+        {clearAllSavedLeads && savedLeads.length > 0 && (
+          <button
+            onClick={clearAllSavedLeads}
+            className="px-3 py-1 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200"
+          >
+            Limpar Tudo
+          </button>
+        )}
       </div>
       
       {savedLeads.length === 0 ? (

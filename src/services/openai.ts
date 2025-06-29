@@ -114,3 +114,59 @@ export const getCompanyUrl = async (companyName: string): Promise<string> => {
     return 'URL not found';
   }
 };
+
+export const getCompanyEmployeeCount = async (companyName: string, industry?: string): Promise<string> => {
+  // Verificar se a chave da API está configurada
+  if (!import.meta.env.VITE_OPENAI_API_KEY) {
+    console.warn('⚠️ Chave da API OpenAI não configurada, usando fallback');
+    return '11-50'; // Fallback se não houver chave
+  }
+  
+  try {
+    const prompt = `
+      Você é um especialista em dados de empresas. Dado o nome de uma empresa${industry ? ` do setor de ${industry}` : ''}, pesquise mentalmente como se tivesse acesso a bases de dados empresariais (LinkedIn, Crunchbase, sites oficiais) e responda apenas com o número aproximado de funcionários.
+
+      Regras importantes:
+      1. Responda APENAS com uma das seguintes opções padronizadas:
+         - "1-10" (para startups muito pequenas)
+         - "11-50" (para pequenas empresas)
+         - "51-200" (para empresas médias)
+         - "201-500" (para empresas médias-grandes)
+         - "501-1000" (para empresas grandes)
+         - "1001-5000" (para grandes corporações)
+         - "5001-10000" (para multinacionais)
+         - "10000+" (para grandes multinacionais)
+         - "N/A" (se não conseguir estimar)
+
+      2. Base sua estimativa em:
+         - Porte da empresa no mercado
+         - Setor de atuação
+         - Presença geográfica
+         - Conhecimento geral sobre a empresa
+
+      3. Não inclua explicações ou texto adicional
+      4. Seja conservador nas estimativas
+
+      Nome da empresa: ${companyName}
+    `;
+    
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "gpt-3.5-turbo",
+      temperature: 0.1, // Baixa temperatura para respostas mais consistentes
+      max_tokens: 20
+    });
+
+    const response = completion.choices[0].message.content?.trim() || 'N/A';
+    
+    // Validar se a resposta está nas opções válidas
+    const validOptions = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1001-5000', '5001-10000', '10000+', 'N/A'];
+    const finalResponse = validOptions.includes(response) ? response : 'N/A';
+    
+    return finalResponse;
+    
+  } catch (error) {
+    console.error('Erro ao buscar dados de funcionários:', error);
+    return 'N/A';
+  }
+};
