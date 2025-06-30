@@ -24,6 +24,8 @@ import { Lead } from '../types';
 import LeadDataModal from './LeadDataModal';
 import { INDUSTRIES } from '../constants/industries';
 import ApolloLeadSearch from './ApolloLeadSearch';
+import UserInitials from './UserInitials';
+import { extractCity } from '../utils/stringUtils';
 
 interface ApplyLeadOnlineProps {
   onClose: () => void;
@@ -456,7 +458,7 @@ const ApplyLeadOnline: React.FC<ApplyLeadOnlineProps> = ({ onClose }) => {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-sm text-gray-900">{lead.location}</div>
+                          <div className="text-sm text-gray-900">{extractCity(lead.location)}</div>
                         </td>
                         <td className="px-4 py-3 space-x-2">
                           <button

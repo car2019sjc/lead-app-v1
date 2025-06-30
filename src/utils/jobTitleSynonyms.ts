@@ -38,7 +38,7 @@ export const jobTitleSynonyms: Record<string, string[]> = {
   'coordenador de marketing': ['marketing coordinator', 'marketing lead'],
   
   // Supervisão
-  'supervisor': ['supervisor', 'team lead', 'manager'],
+  'supervisor': ['supervisor', 'team lead', 'manager', 'coordenador'],
   'supervisor de vendas': ['sales supervisor', 'sales team lead'],
   
   // Inglês para Português (para pesquisas reversas)
@@ -46,7 +46,6 @@ export const jobTitleSynonyms: Record<string, string[]> = {
   'director': ['diretor', 'gerente geral'],
   'head': ['chefe', 'diretor', 'gerente'],
   'lead': ['líder', 'coordenador', 'responsável'],
-  'supervisor': ['supervisor', 'coordenador'],
   'coordinator': ['coordenador', 'supervisor'],
   
   // Especialidades técnicas

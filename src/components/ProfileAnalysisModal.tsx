@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, UserCircle, Briefcase, Target, MessageSquare, Loader2, Award, MapPin, Building } from 'lucide-react';
+import { X, UserCircle, Briefcase, Target, MessageSquare, Loader2, Award, MapPin, Building, Mail, ExternalLink, TrendingUp, Users, Calendar, DollarSign, Zap, Star, CheckCircle } from 'lucide-react';
 import { Lead } from '../types';
 import { analyzeProfile } from '../services/openai';
+import { extractCity } from '../utils/stringUtils';
 
 interface ProfileAnalysisModalProps {
   lead: Lead;
@@ -298,7 +299,7 @@ const ProfileAnalysisModal: React.FC<ProfileAnalysisModalProps> = ({ lead, onClo
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden">
         {/* Header aprimorado */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-6">
+        <div className="bg-gradient-to-r from-blue-900 to-blue-800 text-white px-8 py-6">
           <div className="flex justify-between items-start">
             <div className="flex items-start space-x-4">
               <div className="bg-white bg-opacity-20 rounded-full p-3">
@@ -315,12 +316,12 @@ const ProfileAnalysisModal: React.FC<ProfileAnalysisModalProps> = ({ lead, onClo
                     <Building className="w-4 h-4 mr-1" />
                     <span className="text-sm">{lead.company}</span>
                   </div>
-                  {lead.location && (
-                    <div className="flex items-center">
-                      <MapPin className="w-4 h-4 mr-1" />
-                      <span className="text-sm">{lead.location}</span>
-              </div>
-                  )}
+                                {lead.location && (
+                <div className="flex items-center mb-2">
+                  <MapPin size={16} className="mr-2 text-gray-600" />
+                  <span className="text-sm font-bold" style={{ color: '#FF7A00' }}>{extractCity(lead.location)}</span>
+                </div>
+              )}
                 </div>
               </div>
           </div>

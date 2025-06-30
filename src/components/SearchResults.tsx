@@ -2,6 +2,7 @@ import React from 'react';
 import { Lead } from '../types';
 import UserInitials from './UserInitials';
 import { Users } from 'lucide-react';
+import { extractCity } from '../utils/stringUtils';
 
 interface SearchResultsProps {
   searchResults: Lead[];
@@ -115,7 +116,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="text-sm text-gray-900">{lead.location || 'Location not available'}</div>
+                  <div className="text-sm text-gray-900">{extractCity(lead.location) || 'Location not available'}</div>
                 </td>
                 <td className="px-4 py-3">
                   {lead.profileUrl ? (

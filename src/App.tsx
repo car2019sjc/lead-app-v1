@@ -1,9 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import LinkedInLeadFinder from './components/LinkedInLeadFinder';
 import ApplyLeadOnline from './components/ApplyLeadOnline';
 import ApplyLeadOffline from './components/ApplyLeadOffline';
 import ApolloLeadSearch from './components/ApolloLeadSearch';
 import { ExternalLink, Lock, User, Search } from 'lucide-react';
+
+const OnSetLogo: React.FC = () => {
+  return (
+    <div 
+      className="text-3xl font-extrabold mb-1 tracking-tight"
+      style={{ 
+        minWidth: 'max-content', 
+        display: 'block', 
+        textAlign: 'center',
+        whiteSpace: 'nowrap',
+        overflow: 'visible',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}
+    >
+      <span style={{ color: '#2563eb' }}>On</span>
+      <span style={{ color: '#FF7A00' }}>Set</span>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -28,16 +47,13 @@ const App: React.FC = () => {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-[#232433]">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md px-4">
           <form onSubmit={handleLogin} className="bg-[#26293b] p-10 rounded-2xl shadow-2xl border border-[#23263a] flex flex-col gap-2">
             <div className="flex flex-col items-center mb-6">
-              <div className="mb-2">
-                <svg width="38" height="38" fill="none" viewBox="0 0 24 24"><path fill="#FFC300" d="M13 2v8.267l6.294-3.634a1 1 0 1 1 1 1.732l-16 9.236a1 1 0 0 1-1-1.732L11 2.267V2a1 1 0 1 1 2 0Z"/></svg>
-              </div>
-              <h2 className="text-2xl font-extrabold mb-1 tracking-tight">
-                <span className="text-[#2563eb]">On</span><span className="text-[#FF7A00]">Set</span>
-              </h2>
-              <span className="text-[#FF7A00] text-sm font-medium mb-2">Conectando Inteligência e Tecnologia</span>
+                      <div className="text-center mb-8">
+          <OnSetLogo />
+          <p className="text-xs font-bold mb-4" style={{ color: '#FF7A00' }}>Conectando Inteligência e Tecnologia</p>
+        </div>
               <h3 className="text-2xl font-bold text-white mb-1 mt-2">Leads Finder</h3>
               <p className="text-gray-300 text-sm text-center max-w-xs">Plataforma inteligente para pesquisa e qualificação de leads B2B, integrando múltiplas fontes e automação para gerar dados enriquecidos e insights estratégicos.</p>
             </div>
