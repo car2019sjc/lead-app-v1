@@ -3,7 +3,7 @@ import { Lead } from '../types';
 import UserInitials from './UserInitials';
 import LeadDataModal from './LeadDataModal';
 import ProfileAnalysisModal from './ProfileAnalysisModal';
-import ApolloLeadSearch from './ApolloLeadSearch';
+import { extractCity } from '../utils/stringUtils';
 
 interface SavedLeadsProps {
   savedLeads: Lead[];
@@ -21,8 +21,6 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showDataModal, setShowDataModal] = useState(false);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  const [showApolloSearch, setShowApolloSearch] = useState(false);
-  const [apolloSearchParams, setApolloSearchParams] = useState<any>(null);
 
   const handleLeadDataClick = (lead: Lead) => {
     setSelectedLead(lead);
@@ -32,16 +30,6 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({
   const handleAnalysisClick = (lead: Lead) => {
     setSelectedLead(lead);
     setShowAnalysisModal(true);
-  };
-
-  const handleApolloSearchClick = (lead: Lead) => {
-    setApolloSearchParams({
-      firstName: lead.firstName,
-      lastName: lead.lastName,
-      organizationName: lead.company,
-      organizationDomain: lead.companyUrl || ''
-    });
-    setShowApolloSearch(true);
   };
 
   return (
@@ -74,9 +62,6 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({
                   Company
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Apollo Lead Search
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Location
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -105,15 +90,7 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({
                     <div className="text-xs text-gray-400">{lead.industry}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleApolloSearchClick(lead)}
-                      className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors duration-200"
-                    >
-                      Buscar
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm text-gray-900">{lead.location || 'Location not available'}</div>
+                    <div className="text-sm text-gray-900">{extractCity(lead.location) || 'Location not available'}</div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                     {lead.profileUrl && (
@@ -165,13 +142,6 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({
         <ProfileAnalysisModal
           lead={selectedLead}
           onClose={() => setShowAnalysisModal(false)}
-        />
-      )}
-
-      {showApolloSearch && apolloSearchParams && (
-        <ApolloLeadSearch
-          onClose={() => setShowApolloSearch(false)}
-          initialParams={apolloSearchParams}
         />
       )}
     </div>

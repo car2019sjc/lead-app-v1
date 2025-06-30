@@ -19,6 +19,11 @@ import { LOCATIONS } from '../constants/locations';
 import SavedLeads from './SavedLeads';
 import { Lead } from '../types';
 import { getJobTitleEquivalents } from '../utils/jobTitleSynonyms';
+import UserInitials from './UserInitials';
+import LeadDataModal from './LeadDataModal';
+import ProfileAnalysisModal from './ProfileAnalysisModal';
+import { sanitizeString } from '../utils/string';
+import { extractCity } from '../utils/stringUtils';
 
 /**
  * Interface que define a estrutura dos dados de um lead importado do Excel
@@ -80,6 +85,11 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
     message: '',
     type: 'success'
   });
+  
+  // Estados para os modais
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [showDataModal, setShowDataModal] = useState(false);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
 
   // Função para mostrar notificações
   const showNotification = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
@@ -87,6 +97,71 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
     setTimeout(() => {
       setNotification({ show: false, message: '', type: 'success' });
     }, 4000);
+  };
+
+  // Funções para os modais
+  const handleLeadDataClick = (result: SearchResult) => {
+    // Converter SearchResult para Lead com workHistory
+    const lead: Lead = {
+      id: result.id,
+      fullName: result.name,
+      firstName: result.name.split(' ')[0] || '',
+      lastName: result.name.split(' ').slice(1).join(' ') || '',
+      jobTitle: result.jobTitle,
+      company: result.company,
+      industry: result.industry,
+      location: result.location,
+      profileUrl: result.profileUrl,
+      email: result.email,
+      employeeCount: result.ftes,
+      emailVerified: false,
+      emailScore: null,
+      // Criar workHistory com as informações disponíveis
+      workHistory: [{
+        title: result.jobTitle,
+        company: result.company,
+        duration: 'Atual',
+        location: result.location,
+        description: `${result.jobTitle} na ${result.company} - ${result.industry}`,
+        companyUrl: `https://www.${result.company.toLowerCase().replace(/\s+/g, '')}.com`
+      }],
+      // Adicionar summary básico
+      summary: `Profissional com experiência em ${result.jobTitle} na área de ${result.industry}. Atualmente trabalha na ${result.company}.`
+    };
+    setSelectedLead(lead);
+    setShowDataModal(true);
+  };
+
+  const handleAnalysisClick = (result: SearchResult) => {
+    // Converter SearchResult para Lead com workHistory
+    const lead: Lead = {
+      id: result.id,
+      fullName: result.name,
+      firstName: result.name.split(' ')[0] || '',
+      lastName: result.name.split(' ').slice(1).join(' ') || '',
+      jobTitle: result.jobTitle,
+      company: result.company,
+      industry: result.industry,
+      location: result.location,
+      profileUrl: result.profileUrl,
+      email: result.email,
+      employeeCount: result.ftes,
+      emailVerified: false,
+      emailScore: null,
+      // Criar workHistory com as informações disponíveis
+      workHistory: [{
+        title: result.jobTitle,
+        company: result.company,
+        duration: 'Atual',
+        location: result.location,
+        description: `${result.jobTitle} na ${result.company} - ${result.industry}`,
+        companyUrl: `https://www.${result.company.toLowerCase().replace(/\s+/g, '')}.com`
+      }],
+      // Adicionar summary básico
+      summary: `Profissional com experiência em ${result.jobTitle} na área de ${result.industry}. Atualmente trabalha na ${result.company}.`
+    };
+    setSelectedLead(lead);
+    setShowAnalysisModal(true);
   };
 
   // Reset dos estados quando o componente é montado
@@ -624,6 +699,17 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
       emailVerified: false,
       emailScore: null,
       employeeCount: lead.ftes || '',
+      companyUrl: `https://www.${lead.company.toLowerCase().replace(/\s+/g, '')}.com`,
+      // Adicionar workHistory e summary para que as informações apareçam no modal
+      workHistory: [{
+        title: lead.jobTitle,
+        company: lead.company,
+        duration: 'Atual',
+        location: lead.location,
+        description: `${lead.jobTitle} na ${lead.company} - ${lead.industry}`,
+        companyUrl: `https://www.${lead.company.toLowerCase().replace(/\s+/g, '')}.com`
+      }],
+      summary: `Profissional com experiência em ${lead.jobTitle} na área de ${lead.industry}. Atualmente trabalha na ${lead.company}.`
     }));
     
     setSavedLeads(prev => {
@@ -698,8 +784,9 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
 
   // Renderização do componente
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 z-10 bg-white px-6 py-4 flex justify-between items-center border-b border-gray-200">
           <div>
             <h2 className="text-xl font-semibold text-gray-800">Leads Offline - Apollo</h2>
@@ -1083,6 +1170,9 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Profile
                         </th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -1127,7 +1217,7 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
                             <div className="text-sm text-gray-900">{result.ftes}</div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-900">{result.location}</div>
+                            <div className="text-sm text-gray-900">{extractCity(result.location)}</div>
                           </td>
                           <td className="px-4 py-3">
                             {result.profileUrl && (
@@ -1140,6 +1230,41 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
                                 LinkedIn
                               </a>
                             )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+                            <div className="flex justify-end space-x-2">
+                              <button
+                                onClick={() => handleLeadDataClick(result)}
+                                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors duration-200"
+                              >
+                                Lead Data
+                              </button>
+                              <button
+                                onClick={() => handleAnalysisClick(result)}
+                                className="px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors duration-200"
+                              >
+                                Análise
+                              </button>
+                              {result.profileUrl && (
+                                <a 
+                                  href={result.profileUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors duration-200"
+                                >
+                                  Profile
+                                </a>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setSearchResults(prev => prev.filter(r => r.id !== result.id));
+                                  setSelectedLeads(prev => prev.filter(id => id !== result.id));
+                                }}
+                                className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors duration-200"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1191,8 +1316,24 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+      
+      {/* Modais */}
+      {showDataModal && selectedLead && (
+        <LeadDataModal
+          lead={selectedLead}
+          onClose={() => setShowDataModal(false)}
+        />
+      )}
+
+      {showAnalysisModal && selectedLead && (
+        <ProfileAnalysisModal
+          lead={selectedLead}
+          onClose={() => setShowAnalysisModal(false)}
+        />
+      )}
+    </>
   );
 };
 

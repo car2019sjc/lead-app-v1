@@ -5,6 +5,7 @@ export interface Lead {
   fullName: string;
   jobTitle: string;
   company: string;
+  companyUrl?: string;
   location: string;
   industry: string;
   email: string | null;
