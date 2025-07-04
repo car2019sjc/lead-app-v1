@@ -250,6 +250,7 @@ const LinkedInLeadFinder: React.FC<LinkedInLeadFinderProps> = ({ onShowOfflineAp
   // Delete saved lead
   const deleteSavedLead = (leadId: string) => {
     setSavedLeads(prev => prev.filter(lead => lead.id !== leadId));
+    setSearchResults(prev => prev.filter(lead => lead.id !== leadId));
     showNotification('Lead removed successfully');
   };
 
@@ -261,6 +262,8 @@ const LinkedInLeadFinder: React.FC<LinkedInLeadFinderProps> = ({ onShowOfflineAp
     }
     if (confirm(`Tem certeza que deseja remover todos os ${savedLeads.length} leads salvos?`)) {
       setSavedLeads([]);
+      setSearchResults([]);
+      setSelectedLeads([]);
       showNotification('Todos os leads foram removidos!');
     }
   };

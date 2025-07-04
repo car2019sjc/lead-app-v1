@@ -2,7 +2,7 @@ import axios from 'axios';
 import config from '../config';
 import { Lead } from '../types';
 import { getCompanyIndustry } from './openai';
-import { getBestEnglishJobTitle, getJobTitleEquivalents } from '../utils/jobTitleSynonyms';
+import { getBestEnglishJobTitle, getJobTitleEquivalents, getEnhancedJobTitleEquivalents, generateJobTitleVariations } from '../utils/jobTitleSynonyms';
 
 const apolloApi = axios.create({
   baseURL: '/apollo',
@@ -22,9 +22,12 @@ export const searchApolloLeads = async (
   company?: string
 ): Promise<Lead[]> => {
   try {
-    // Traduz o cargo para inglês se necessário para melhor resultado na API
-    const englishJobTitle = getBestEnglishJobTitle(jobTitle);
+    // Gera todas as variações possíveis do cargo
+    const titleVariations = generateJobTitleVariations(jobTitle);
+    console.log(`Variações geradas para "${jobTitle}":`, titleVariations);
     
+    // Tenta primeiro com o melhor termo em inglês
+    const englishJobTitle = getBestEnglishJobTitle(jobTitle);
     console.log(`Pesquisando cargo: "${jobTitle}" -> traduzido para: "${englishJobTitle}"`);
     
     let response = await apolloApi.post('/api/v1/mixed_people/search', {
@@ -37,12 +40,38 @@ export const searchApolloLeads = async (
       per_page: count
     });
     
-    // Se não encontrou resultados com o termo traduzido, tenta com equivalentes
+    // Se não encontrou resultados, tenta com as variações
     if (!response.data?.people || response.data.people.length === 0) {
-      const equivalents = getJobTitleEquivalents(jobTitle);
+      console.log('Nenhum resultado com termo em inglês, tentando variações...');
       
-      for (const equivalent of equivalents.slice(0, 3)) { // Tenta até 3 equivalentes
-        console.log(`Tentando termo equivalente: "${equivalent}"`);
+      // Tenta cada variação
+      for (const variation of titleVariations) {
+        console.log(`Tentando variação: "${variation}"`);
+        
+        response = await apolloApi.post('/api/v1/mixed_people/search', {
+          q_organization_domains: [],
+          q_organization_names: company ? [company] : [],
+          page: 1,
+          person_titles: [variation],
+          person_locations: location ? [location] : [],
+          organization_industries: industry ? [industry] : [],
+          per_page: count
+        });
+        
+        if (response.data?.people && response.data.people.length > 0) {
+          console.log(`✅ Encontrados ${response.data.people.length} resultados com "${variation}"`);
+          break;
+        }
+      }
+    }
+    
+    // Se ainda não encontrou, tenta com equivalentes aprimorados
+    if (!response.data?.people || response.data.people.length === 0) {
+      console.log('Ainda sem resultados, tentando equivalentes...');
+      const equivalents = getEnhancedJobTitleEquivalents(jobTitle);
+      
+      for (const equivalent of equivalents.slice(0, 5)) { // Tenta até 5 equivalentes
+        console.log(`Tentando equivalente: "${equivalent}"`);
         
         response = await apolloApi.post('/api/v1/mixed_people/search', {
           q_organization_domains: [],
@@ -55,7 +84,7 @@ export const searchApolloLeads = async (
         });
         
         if (response.data?.people && response.data.people.length > 0) {
-          console.log(`Encontrados ${response.data.people.length} resultados com "${equivalent}"`);
+          console.log(`✅ Encontrados ${response.data.people.length} resultados com "${equivalent}"`);
           break;
         }
       }

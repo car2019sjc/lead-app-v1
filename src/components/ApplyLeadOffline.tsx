@@ -729,11 +729,12 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
   };
 
   /**
-   * Remove um lead da lista de leads salvos
-   * @param leadId - ID do lead a ser removido
+   * Remove um lead da lista de salvos
    */
   const deleteSavedLead = (leadId: string) => {
     setSavedLeads(prev => prev.filter(lead => lead.id !== leadId));
+    setSearchResults(prev => prev.filter(lead => lead.id !== leadId)); // Remove também dos resultados da pesquisa
+    showNotification('Lead removido com sucesso!');
   };
 
   /**
@@ -746,6 +747,8 @@ const ApplyLeadOffline: React.FC<ApplyLeadOfflineProps> = ({ onClose }) => {
     }
     if (confirm(`Tem certeza que deseja remover todos os ${savedLeads.length} leads salvos?`)) {
       setSavedLeads([]);
+      setSearchResults([]); // Limpar também os resultados da pesquisa
+      setSelectedLeads([]); // Limpar leads selecionados
       showNotification('Todos os leads foram removidos!');
     }
   };

@@ -36,6 +36,10 @@ export const jobTitleSynonyms: Record<string, string[]> = {
   'coordenador': ['coordinator', 'lead', 'supervisor'],
   'coordenador de vendas': ['sales coordinator', 'sales lead'],
   'coordenador de marketing': ['marketing coordinator', 'marketing lead'],
+  'coordenador de ti': ['it coordinator', 'technology coordinator', 'tech coordinator', 'it lead'],
+  'coordenador ti': ['it coordinator', 'technology coordinator', 'tech coordinator', 'it lead'],
+  'coordenador de tecnologia': ['technology coordinator', 'tech coordinator', 'it coordinator'],
+  'coordenador tecnologia': ['technology coordinator', 'tech coordinator', 'it coordinator'],
   
   // Supervisão
   'supervisor': ['supervisor', 'team lead', 'manager', 'coordenador'],
@@ -80,4 +84,94 @@ export function getBestEnglishJobTitle(term: string): string {
   
   // Se não há equivalentes, retorna o termo original
   return term;
+}
+
+// Função para normalizar cargo removendo preposições comuns
+export function normalizeJobTitle(title: string): string {
+  // Lista de preposições e artigos comuns em português
+  const prepositions = ['de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no', 'nas', 'nos', 'para', 'pela', 'pelo', 'com', 'sem', 'sob', 'sobre'];
+  
+  // Divide o título em palavras
+  const words = title.toLowerCase().trim().split(/\s+/);
+  
+  // Remove preposições, mas mantém se for a última palavra (ex: "Gerente de TI" -> mantém "TI")
+  const filteredWords = words.filter((word, index) => {
+    // Sempre mantém a primeira e última palavra
+    if (index === 0 || index === words.length - 1) return true;
+    // Remove preposições do meio
+    return !prepositions.includes(word);
+  });
+  
+  return filteredWords.join(' ');
+}
+
+// Função para gerar variações de um cargo
+export function generateJobTitleVariations(title: string): string[] {
+  const variations = new Set<string>();
+  
+  // Adiciona o título original
+  variations.add(title);
+  
+  // Adiciona versão normalizada (sem preposições)
+  const normalized = normalizeJobTitle(title);
+  variations.add(normalized);
+  
+  // Divide em palavras para criar mais variações
+  const words = title.toLowerCase().trim().split(/\s+/);
+  
+  // Se tem "de" no meio, cria variações com e sem
+  if (words.includes('de')) {
+    // Versão sem nenhum "de"
+    const withoutDe = words.filter(w => w !== 'de').join(' ');
+    variations.add(withoutDe);
+    
+    // Para casos como "Coordenador de TI", também tenta "Coordenador TI"
+    const deIndex = words.indexOf('de');
+    if (deIndex > 0 && deIndex < words.length - 1) {
+      const beforeDe = words.slice(0, deIndex);
+      const afterDe = words.slice(deIndex + 1);
+      variations.add([...beforeDe, ...afterDe].join(' '));
+    }
+  }
+  
+  // Adiciona variações com diferentes capitalizações
+  variations.forEach(v => {
+    // Primeira letra maiúscula de cada palavra
+    const titleCase = v.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    variations.add(titleCase);
+    
+    // Tudo maiúsculo
+    variations.add(v.toUpperCase());
+  });
+  
+  // Remove duplicatas e retorna como array
+  return Array.from(variations);
+}
+
+// Função aprimorada para buscar equivalentes considerando variações
+export function getEnhancedJobTitleEquivalents(term: string): string[] {
+  const allEquivalents = new Set<string>();
+  
+  // Primeiro, tenta com o termo original
+  const directEquivalents = getJobTitleEquivalents(term);
+  directEquivalents.forEach(eq => allEquivalents.add(eq));
+  
+  // Depois, tenta com o termo normalizado
+  const normalized = normalizeJobTitle(term);
+  const normalizedEquivalents = getJobTitleEquivalents(normalized);
+  normalizedEquivalents.forEach(eq => allEquivalents.add(eq));
+  
+  // Gera variações e busca equivalentes para cada uma
+  const variations = generateJobTitleVariations(term);
+  variations.forEach(variation => {
+    const varEquivalents = getJobTitleEquivalents(variation);
+    varEquivalents.forEach(eq => allEquivalents.add(eq));
+  });
+  
+  // Se ainda não encontrou equivalentes, retorna as próprias variações
+  if (allEquivalents.size === 0) {
+    return variations;
+  }
+  
+  return Array.from(allEquivalents);
 } 
